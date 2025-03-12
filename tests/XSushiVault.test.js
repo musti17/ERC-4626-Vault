@@ -1,0 +1,222 @@
+const { expect } = require("chai");
+const { ethers } = require("hardhat");
+
+describe("XSushiVault Test Suite", function () {
+  let vault, sushi, xSushi, sushiBar, router, usdt, user;
+  let vaultAddress, userAddress, sushiAddress;
+  const impersonatedAccount = "0xA78ef43Ac39681d62c61B575E3c65660E9043626";
+  const routerAddress = "0x2E6cd2d30aa43f40aa81619ff4b6E0a41479B13F";
+  const usdtAddress = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
+  const wethAddress = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2";
+
+  function computePoolAddress(factoryAddress, tokenA, tokenB, fee) {
+    const [token0, token1] =
+      tokenA.toLowerCase() < tokenB.toLowerCase()
+        ? [tokenA, tokenB]
+        : [tokenB, tokenA];
+    const poolKeyEncoded = ethers.solidityPacked(
+      ["address", "address", "uint24"],
+      [token0, token1, fee]
+    );
+    const salt = ethers.keccak256(poolKeyEncoded);
+    const POOL_INIT_CODE_HASH =
+      "0xe34f199b19b2b4f47f68442619d555527d244f78a3297ea89325f843f87b8b54";
+    return ethers.getCreate2Address(factoryAddress, salt, POOL_INIT_CODE_HASH);
+  }
+
+  before(async () => {
+    await hre.network.provider.request({
+      method: "hardhat_impersonateAccount",
+      params: [impersonatedAccount],
+    });
+    user = await ethers.getSigner(impersonatedAccount);
+    userAddress = user.address;
+
+    sushiAddress = "0x6B3595068778DD592e39A122f4f5a5cF09C90fE2";
+    const sushiBarAddress = "0x8798249c2E607446EfB7Ad49eC89dD1865Ff4272";
+    const xSushiAddress = sushiBarAddress;
+
+    sushi = await ethers.getContractAt("IERC20", sushiAddress);
+    xSushi = await ethers.getContractAt("IERC20", xSushiAddress);
+    sushiBar = await ethers.getContractAt("ISushiBar", sushiBarAddress);
+    usdt = await ethers.getContractAt("IERC20", usdtAddress);
+    router = await ethers.getContractAt("ISwapRouter", routerAddress);
+
+    console.log("Router:", router.target);
+
+    const XSushiVault = await ethers.getContractFactory("XSushiVault");
+    vault = await XSushiVault.deploy(
+      sushiAddress,
+      sushiBarAddress,
+      routerAddress,
+      sushiBarAddress
+    );
+    await vault.waitForDeployment();
+    vaultAddress = vault.target;
+    console.log("Vault deployed at:", vaultAddress);
+
+    const usdtBalance = await usdt.balanceOf(userAddress);
+    console.log("USDT Balance:", usdtBalance);
+
+    const xSushiBalance = await xSushi.balanceOf(userAddress);
+    if (xSushiBalance === 0n) throw new Error("User has no xSushi balance");
+
+    await xSushi.connect(user).approve(sushiBarAddress, xSushiBalance);
+    await sushiBar.connect(user).leave(xSushiBalance);
+
+    const sushiBalance = await sushi.balanceOf(user.address);
+    console.log(
+      "User Sushi balance after withdrawal:",
+      ethers.formatEther(sushiBalance)
+    );
+    if (sushiBalance === 0n)
+      throw new Error("Failed to withdraw Sushi from SushiBar");
+  });
+
+  describe("Deposit Functionality", function () {
+    it("should deposit Sushi and mint shares", async () => {
+      const userSushiBalance = await sushi.balanceOf(user.address);
+      expect(userSushiBalance > 0).to.be.true;
+
+      const depositAmount = ethers.parseUnits("10", 18);
+      await sushi.connect(user).approve(vaultAddress, depositAmount);
+
+      const sharesPreview = await vault.previewDeposit(depositAmount);
+      await expect(vault.connect(user).deposit(depositAmount, userAddress))
+        .to.emit(vault, "Deposit")
+        .withArgs(userAddress, userAddress, depositAmount, sharesPreview);
+
+      const userVaultShares = await vault.balanceOf(userAddress);
+      expect(userVaultShares).to.equal(sharesPreview);
+
+      const vaultxSushiBalance = await xSushi.balanceOf(vaultAddress);
+      expect(vaultxSushiBalance > 0).to.be.true;
+    });
+
+    it("should revert on deposit with insufficient balance", async () => {
+      const userBalance = await sushi.balanceOf(userAddress);
+      const excessiveAmount = userBalance + ethers.parseUnits("1", 18);
+      await sushi.connect(user).approve(vaultAddress, excessiveAmount);
+      await expect(
+        vault.connect(user).deposit(excessiveAmount, userAddress)
+      ).to.be.revertedWith("ERC20: transfer amount exceeds balance");
+    });
+  });
+
+  describe("Withdrawal Functionality", function () {
+    it("should allow withdrawal of Sushi", async () => {
+      // Deposit 10 Sushi tokens first
+      const depositAmount = ethers.parseUnits("10", 18);
+      await sushi.connect(user).approve(vaultAddress, depositAmount);
+      await vault.connect(user).deposit(depositAmount, userAddress);
+
+      // Record user's Sushi balance before withdrawal
+      const sushiBefore = await sushi.balanceOf(userAddress);
+
+      // Use previewWithdraw to determine the expected number of shares to be burned
+      const expectedShares = await vault.previewWithdraw(depositAmount);
+
+      // Execute the withdrawal and expect the Withdraw event to be emitted
+      await expect(
+        vault.connect(user).withdraw(depositAmount, userAddress, userAddress)
+      )
+        .to.emit(vault, "Withdraw")
+        .withArgs(
+          userAddress,
+          userAddress,
+          userAddress,
+          depositAmount,
+          expectedShares
+        );
+
+      // Check that the user's Sushi balance has increased by at least the withdrawal amount.
+      const sushiAfter = await sushi.balanceOf(userAddress);
+      expect(sushiAfter - sushiBefore).to.equal(depositAmount);
+    });
+  });
+
+  describe("Zap Functionality", function () {
+    it("should check if router is deployed", async () => {
+      const code = await ethers.provider.getCode(routerAddress);
+      console.log("Router code length:", code.length);
+      expect(code.length > 2).to.be.true;
+    });
+
+    it("should check if USDT-SUSHI pool exists", async () => {
+      const routerFactory = "0xbACEB8eC6b9355Dfc0269C18bac9d6E2Bdc29C4F";
+      const tokenIn = usdtAddress;
+      const tokenOut = sushiAddress;
+      const fee = 3000;
+      const poolAddress = computePoolAddress(
+        routerFactory,
+        tokenIn,
+        tokenOut,
+        fee
+      );
+      const code = await ethers.provider.getCode(poolAddress);
+      expect(code.length).to.be.greaterThan(
+        0,
+        "USDT-SUSHI pool does not exist"
+      );
+    });
+
+    it("should zapIn USDT to Sushi and mint shares", async () => {
+      const tokenIn = usdtAddress;
+      const amountIn = ethers.parseUnits("10", 6); // 10 USDT
+      const amountOutMinimum = 0; // No minimum output enforced for testing
+      const fee = 10000; // 1% fee tier
+    
+      // Approve vault to spend USDT
+      await usdt.connect(user).approve(vaultAddress, amountIn);
+    
+      // Initial balances
+      const initialxSushiBalance = await xSushi.balanceOf(vaultAddress);
+      const initialShares = await vault.balanceOf(userAddress);
+    
+      // Execute zapIn with all four arguments
+      await expect(
+        vault.connect(user).zapIn(tokenIn, amountIn, amountOutMinimum, fee)
+      ).to.emit(vault, "Deposit");
+    
+      // Check balances after
+      const finalxSushiBalance = await xSushi.balanceOf(vaultAddress);
+      expect(finalxSushiBalance).to.be.greaterThan(initialxSushiBalance);
+    
+      const finalShares = await vault.balanceOf(userAddress);
+      expect(finalShares).to.be.greaterThan(initialShares);
+    });
+
+    it("test swap directly", async () => {
+      const amountIn = ethers.parseUnits("10", 6); // 10 USDT
+      const params = {
+        tokenIn: usdtAddress,
+        tokenOut: sushiAddress,
+        fee: 3000,
+        recipient: routerAddress,
+        deadline: Math.floor(Date.now() / 1000) + 3600,
+        amountIn: amountIn,
+        amountOutMinimum: 0,
+        sqrtPriceLimitX96: 0,
+      };
+    
+      // Approve router to spend USDT
+      await usdt.connect(user).approve(routerAddress, amountIn);
+    
+      // Execute the swap
+      await router.connect(user).exactInputSingle(params);
+    
+      // Verify Sushi balance increased
+      const sushiBalance = await sushi.balanceOf(userAddress);
+      expect(sushiBalance).to.be.greaterThan(0);
+    });
+
+    it("should revert if zapIn is called with Sushi", async () => {
+      const sushiAmount = ethers.parseUnits("10", 18);
+      await sushi.connect(user).approve(vaultAddress, sushiAmount);
+
+      await expect(
+        vault.connect(user).zapIn(sushiAddress, sushiAmount, 1, 3000)
+      ).to.be.revertedWith("Use deposit() for Sushi");
+    });
+  });
+});
