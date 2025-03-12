@@ -121,7 +121,7 @@ contract XSushiVault is ERC4626, ReentrancyGuard {
                 tokenOut: address(sushi),
                 fee: fee,
                 recipient: address(this),
-                deadline: block.timestamp,
+                deadline: block.timestamp + 1000,
                 amountIn: amountIn,
                 amountOutMinimum: amountOutMinimum,
                 sqrtPriceLimitX96: 0

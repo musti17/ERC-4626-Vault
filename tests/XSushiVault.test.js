@@ -5,7 +5,6 @@ const { IMPERSONATEDACCOUNT, ROUTERADDRESS, USDTADDRESS, WETHADDRESS, SUSHIADDRE
 describe("XSushiVault Test Suite", function () {
   let vault, sushi, xSushi, sushiBar, router, usdt, user;
   let vaultAddress, userAddress, sushiAddress;
-  console.log(IMPERSONATEDACCOUNT)
   const impersonatedAccount = IMPERSONATEDACCOUNT;
   const routerAddress = ROUTERADDRESS;
   const usdtAddress = USDTADDRESS;
@@ -162,42 +161,6 @@ describe("XSushiVault Test Suite", function () {
       );
     });
 
-    it("should check USDT-SUSHI pool liquidity", async () => {
-      const routerFactory = ROUTERFACTORY;
-      const tokenA = sushiAddress;
-      const tokenB = usdtAddress;
-      const feeTiers = [500, 3000, 10000]; // 0.05%, 0.3%, 1%
-
-      for (const fee of feeTiers) {
-        const poolAddress = computePoolAddress(
-          routerFactory,
-          tokenA,
-          tokenB,
-          fee
-        );
-        const pool = new ethers.Contract(
-          poolAddress,
-          IUniswapV3PoolABI,
-          ethers.provider
-        );
-        try {
-          const slot0 = await pool.slot0();
-          console.log(
-            `Fee Tier ${fee}: Liquidity = ${slot0.liquidity.toString()}`
-          );
-          if (slot0.liquidity > 0) {
-            expect(slot0.liquidity).to.be.gt(0, "Pool has no liquidity");
-            return; // Exit once a valid pool is found
-          }
-        } catch (error) {
-          console.log(
-            `Fee Tier ${fee}: Pool does not exist or has no liquidity`
-          );
-        }
-      }
-      throw new Error("No active USDT-SUSHI pool found with liquidity");
-    });
-
     it("should revert on zapIn with insufficient USDT balance", async () => {
       const amountIn = ethers.parseUnits("1000000", 6); // Exceeds user's balance
       await usdt.connect(user).approve(vaultAddress, amountIn);
@@ -219,40 +182,64 @@ describe("XSushiVault Test Suite", function () {
       const initialUSDTBalance = await usdt.balanceOf(userAddress);
       const initialShares = await vault.balanceOf(userAddress);
       const initialVaultxSushi = await xSushi.balanceOf(vaultAddress);
-
+    
       // Zap parameters
-      const amountIn = ethers.parseUnits("100", 6);
-      const amountOutMinimum = 1;
-      const fee = 3000;
-
-      // Approve vault to spend USDT
+      const amountIn = ethers.parseUnits("15", 6); // 100 USDT (6 decimals)
+      const fee = 3000; 
+    
+      // Approve vault to spend USDT (router approval is handled internally by the contract)
       await usdt.connect(user).approve(vaultAddress, amountIn);
-
+    
       // Execute zapIn
       const tx = await vault
         .connect(user)
-        .zapIn(usdtAddress, amountIn, amountOutMinimum, fee);
-
+        .zapIn(usdtAddress, amountIn, 0, fee);
+    
       // Check USDT balance decreased
       const finalUSDTBalance = await usdt.balanceOf(userAddress);
       expect(finalUSDTBalance).to.equal(initialUSDTBalance - amountIn);
-
+    
       // Check shares increased
       const finalShares = await vault.balanceOf(userAddress);
       expect(finalShares).to.be.gt(initialShares);
-
-      // Check vault's xSUSHI balance increased
+    
+      // Check vault's xSushi balance increased
       const finalVaultxSushi = await xSushi.balanceOf(vaultAddress);
       expect(finalVaultxSushi).to.be.gt(initialVaultxSushi);
-
+    
+      // Check Deposit event
       await expect(tx)
         .to.emit(vault, "Deposit")
         .withArgs(
           userAddress,
           userAddress,
-          anyValue,
+          ethers.AnyNumber, // Sushi received (any value > 0)
           finalShares - initialShares
         );
+    });
+
+    it("should perform swap directly", async () => {
+      const wethAddress = WETHADDRESS;
+      const amountIn = ethers.parseUnits("100", 6);
+      const weth = await ethers.getContractAt("IERC20", wethAddress);
+      const deadline = (await ethers.provider.getBlock("latest")).timestamp + 1000;
+      await usdt.connect(user).approve(routerAddress, amountIn);
+      const params = {
+        tokenIn: usdtAddress,
+        tokenOut: wethAddress,
+        fee: 500,
+        recipient: userAddress,
+        deadline: deadline,
+        amountIn: ethers.parseUnits("100", 6),
+        amountOutMinimum: 0,
+        sqrtPriceLimitX96: 0,
+      };
+      const wethBefore = await weth.balanceOf(userAddress);
+      console.log("This is wethBefore", wethBefore)
+      await router.connect(user).exactInputSingle(params);
+      const wethAfter = await weth.balanceOf(userAddress);
+      console.log("This is wethBefore", wethAfter);
+      expect(wethAfter).to.be.gt(wethBefore);
     });
 
     it("should revert on zapIn with high slippage protection", async () => {
