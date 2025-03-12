@@ -160,54 +160,106 @@ describe("XSushiVault Test Suite", function () {
       );
     });
 
-    it("should zapIn USDT to Sushi and mint shares", async () => {
-      const tokenIn = usdtAddress;
-      const amountIn = ethers.parseUnits("10", 6); // 10 USDT
-      const amountOutMinimum = 0; // No minimum output enforced for testing
-      const fee = 10000; // 1% fee tier
-    
-      // Approve vault to spend USDT
-      await usdt.connect(user).approve(vaultAddress, amountIn);
-    
-      // Initial balances
-      const initialxSushiBalance = await xSushi.balanceOf(vaultAddress);
-      const initialShares = await vault.balanceOf(userAddress);
-    
-      // Execute zapIn with all four arguments
-      await expect(
-        vault.connect(user).zapIn(tokenIn, amountIn, amountOutMinimum, fee)
-      ).to.emit(vault, "Deposit");
-    
-      // Check balances after
-      const finalxSushiBalance = await xSushi.balanceOf(vaultAddress);
-      expect(finalxSushiBalance).to.be.greaterThan(initialxSushiBalance);
-    
-      const finalShares = await vault.balanceOf(userAddress);
-      expect(finalShares).to.be.greaterThan(initialShares);
+    it("should check USDT-SUSHI pool liquidity", async () => {
+      const routerFactory = "0xbACEB8eC6b9355Dfc0269C18bac9d6E2Bdc29C4F";
+      const tokenA = sushiAddress;
+      const tokenB = usdtAddress;
+      const feeTiers = [500, 3000, 10000]; // 0.05%, 0.3%, 1%
+
+      for (const fee of feeTiers) {
+        const poolAddress = computePoolAddress(
+          routerFactory,
+          tokenA,
+          tokenB,
+          fee
+        );
+        const pool = new ethers.Contract(
+          poolAddress,
+          IUniswapV3PoolABI,
+          ethers.provider
+        );
+        try {
+          const slot0 = await pool.slot0();
+          console.log(
+            `Fee Tier ${fee}: Liquidity = ${slot0.liquidity.toString()}`
+          );
+          if (slot0.liquidity > 0) {
+            expect(slot0.liquidity).to.be.gt(0, "Pool has no liquidity");
+            return; // Exit once a valid pool is found
+          }
+        } catch (error) {
+          console.log(
+            `Fee Tier ${fee}: Pool does not exist or has no liquidity`
+          );
+        }
+      }
+      throw new Error("No active USDT-SUSHI pool found with liquidity");
     });
 
-    it("test swap directly", async () => {
-      const amountIn = ethers.parseUnits("10", 6); // 10 USDT
-      const params = {
-        tokenIn: usdtAddress,
-        tokenOut: sushiAddress,
-        fee: 3000,
-        recipient: routerAddress,
-        deadline: Math.floor(Date.now() / 1000) + 3600,
-        amountIn: amountIn,
-        amountOutMinimum: 0,
-        sqrtPriceLimitX96: 0,
-      };
-    
-      // Approve router to spend USDT
-      await usdt.connect(user).approve(routerAddress, amountIn);
-    
-      // Execute the swap
-      await router.connect(user).exactInputSingle(params);
-    
-      // Verify Sushi balance increased
-      const sushiBalance = await sushi.balanceOf(userAddress);
-      expect(sushiBalance).to.be.greaterThan(0);
+    it("should revert on zapIn with insufficient USDT balance", async () => {
+      const amountIn = ethers.parseUnits("1000000", 6); // Exceeds user's balance
+      await usdt.connect(user).approve(vaultAddress, amountIn);
+      await expect(vault.connect(user).zapIn(usdtAddress, amountIn, 0, 3000)).to
+        .be.reverted;
+    });
+
+    it("should revert on zapIn with high slippage protection", async () => {
+      const amountIn = ethers.parseUnits("10", 6);
+      const amountOutMinimum = ethers.parseUnits("1000", 18); // Unrealistic Sushi amount
+      await usdt.connect(user).approve(vaultAddress, amountIn);
+      await expect(
+        vault.connect(user).zapIn(usdtAddress, amountIn, amountOutMinimum, 3000)
+      ).to.be.reverted;
+    });
+
+    it("should perform zapIn with USDT and mint shares", async () => {
+      // Initial balances
+      const initialUSDTBalance = await usdt.balanceOf(userAddress);
+      const initialShares = await vault.balanceOf(userAddress);
+      const initialVaultxSushi = await xSushi.balanceOf(vaultAddress);
+
+      // Zap parameters
+      const amountIn = ethers.parseUnits("100", 6);
+      const amountOutMinimum = 1;
+      const fee = 3000;
+
+      // Approve vault to spend USDT
+      await usdt.connect(user).approve(vaultAddress, amountIn);
+
+      // Execute zapIn
+      const tx = await vault
+        .connect(user)
+        .zapIn(usdtAddress, amountIn, amountOutMinimum, fee);
+
+      // Check USDT balance decreased
+      const finalUSDTBalance = await usdt.balanceOf(userAddress);
+      expect(finalUSDTBalance).to.equal(initialUSDTBalance - amountIn);
+
+      // Check shares increased
+      const finalShares = await vault.balanceOf(userAddress);
+      expect(finalShares).to.be.gt(initialShares);
+
+      // Check vault's xSUSHI balance increased
+      const finalVaultxSushi = await xSushi.balanceOf(vaultAddress);
+      expect(finalVaultxSushi).to.be.gt(initialVaultxSushi);
+
+      await expect(tx)
+        .to.emit(vault, "Deposit")
+        .withArgs(
+          userAddress,
+          userAddress,
+          anyValue,
+          finalShares - initialShares
+        );
+    });
+
+    it("should revert on zapIn with high slippage protection", async () => {
+      const amountIn = ethers.parseUnits("10", 6);
+      const amountOutMinimum = ethers.parseUnits("1000", 18); // Unrealistic Sushi amount
+      await usdt.connect(user).approve(vaultAddress, amountIn);
+      await expect(
+        vault.connect(user).zapIn(usdtAddress, amountIn, amountOutMinimum, 3000)
+      ).to.be.reverted; // Reverts due to insufficient output
     });
 
     it("should revert if zapIn is called with Sushi", async () => {
