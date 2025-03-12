@@ -1,13 +1,15 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
+const { IMPERSONATEDACCOUNT, ROUTERADDRESS, USDTADDRESS, WETHADDRESS, SUSHIADDRESS, SUSHIBARADDRESS, ROUTERFACTORY } = require("../constants.js");
 
 describe("XSushiVault Test Suite", function () {
   let vault, sushi, xSushi, sushiBar, router, usdt, user;
   let vaultAddress, userAddress, sushiAddress;
-  const impersonatedAccount = "0xA78ef43Ac39681d62c61B575E3c65660E9043626";
-  const routerAddress = "0x2E6cd2d30aa43f40aa81619ff4b6E0a41479B13F";
-  const usdtAddress = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
-  const wethAddress = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2";
+  console.log(IMPERSONATEDACCOUNT)
+  const impersonatedAccount = IMPERSONATEDACCOUNT;
+  const routerAddress = ROUTERADDRESS;
+  const usdtAddress = USDTADDRESS;
+  const wethAddress = WETHADDRESS;
 
   function computePoolAddress(factoryAddress, tokenA, tokenB, fee) {
     const [token0, token1] =
@@ -32,8 +34,8 @@ describe("XSushiVault Test Suite", function () {
     user = await ethers.getSigner(impersonatedAccount);
     userAddress = user.address;
 
-    sushiAddress = "0x6B3595068778DD592e39A122f4f5a5cF09C90fE2";
-    const sushiBarAddress = "0x8798249c2E607446EfB7Ad49eC89dD1865Ff4272";
+    sushiAddress = SUSHIADDRESS
+    const sushiBarAddress = SUSHIBARADDRESS;
     const xSushiAddress = sushiBarAddress;
 
     sushi = await ethers.getContractAt("IERC20", sushiAddress);
@@ -143,7 +145,7 @@ describe("XSushiVault Test Suite", function () {
     });
 
     it("should check if USDT-SUSHI pool exists", async () => {
-      const routerFactory = "0xbACEB8eC6b9355Dfc0269C18bac9d6E2Bdc29C4F";
+      const routerFactory = ROUTERFACTORY;
       const tokenIn = usdtAddress;
       const tokenOut = sushiAddress;
       const fee = 3000;
@@ -161,7 +163,7 @@ describe("XSushiVault Test Suite", function () {
     });
 
     it("should check USDT-SUSHI pool liquidity", async () => {
-      const routerFactory = "0xbACEB8eC6b9355Dfc0269C18bac9d6E2Bdc29C4F";
+      const routerFactory = ROUTERFACTORY;
       const tokenA = sushiAddress;
       const tokenB = usdtAddress;
       const feeTiers = [500, 3000, 10000]; // 0.05%, 0.3%, 1%
