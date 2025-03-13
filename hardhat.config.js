@@ -1,6 +1,6 @@
-require("@nomicfoundation/hardhat-toolbox")
+require("@nomicfoundation/hardhat-toolbox");
 require("dotenv").config();
-// require("@tenderly/hardhat-tenderly");
+const tenderly = require("@tenderly/hardhat-tenderly");
 
 
 module.exports = {
@@ -12,9 +12,13 @@ module.exports = {
         blockNumber: 21080117,
       },
     },
+    virtualMainnet: {
+      url: process.env.TENDERLY_VIRTUAL_MAINNET_RPC,
+      chainId: 1
+    },
   },
-  // tenderly: {
-  //   project: "XSushiVault",
-  //   username: "musti17",
-  // },
+  tenderly: {
+    project: "XSushiVault",
+    username: "musti17",
+  },
 };
