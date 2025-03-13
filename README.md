@@ -64,8 +64,23 @@ The following decisions were made to balance security, gas efficiency, and funct
   - **Reasoning**: Assembly could save ~50-100 gas per operation but would reduce readability and increase error risk. Maintainability and simplicity are prioritized over minor gas optimizations.
 
 - **Immutable Variables**
+
   - **Decision**: Declared key addresses (i.e., `sushi`, `sushiBar`, `router`, `xSushi`) as immutable.
   - **Reasoning**: Reduces storage costs and gas usage compared to regular storage variables, enhancing efficiency without compromising security.
+
+- **NatSpec Format for Documentation**
+
+  - **Decision**: Adopted Solidity's [NatSpec](https://docs.soliditylang.org/en/v0.8.20/natspec-format.html) format for writing function and contract-level documentation.
+  - **Reasoning**: Provides clear explanations for contract functions, making the codebase more maintainable and readable for developers and auditors.
+
+- **Pinned Dependencies**
+
+  - **Decision**: Locked dependency versions in `package.json` to ensure reproducibility and avoid breaking changes.
+  - **Reasoning**: Helps prevent unexpected issues when deploying or testing the contract by keeping dependency versions fixed.
+
+- **Magic Strings Removed**
+  - **Decision**: Replaced hardcoded string literals with constants where applicable.
+  - **Reasoning**: Improves code maintainability, reduces risk of typos, and makes future modifications easier.
 
 These decisions ensure XSushiVault is secure, gas-efficient, and maintainable while adhering to the ERC4626 standard.
 
