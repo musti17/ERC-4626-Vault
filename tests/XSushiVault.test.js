@@ -16,7 +16,6 @@ describe("XSushiVault Test Suite", function () {
   const impersonatedAccount = IMPERSONATEDACCOUNT;
   const routerAddress = ROUTERADDRESS;
   const usdtAddress = USDTADDRESS;
-  const wethAddress = WETHADDRESS;
 
   function computePoolAddress(factoryAddress, tokenA, tokenB, fee) {
     const [token0, token1] =
@@ -113,6 +112,14 @@ describe("XSushiVault Test Suite", function () {
   });
 
   describe("Withdrawal Functionality", function () {
+    it("should revert withdrawal if user has no shares", async () => {
+      await expect(
+        vault
+          .connect(user)
+          .withdraw(ethers.parseUnits("10", 18), userAddress, userAddress)
+      ).to.be.reverted;
+    });
+
     it("should allow withdrawal of Sushi", async () => {
       // Deposit 10 Sushi tokens first
       const depositAmount = ethers.parseUnits("10", 18);
@@ -141,6 +148,27 @@ describe("XSushiVault Test Suite", function () {
       // Check that the user's Sushi balance has increased by at least the withdrawal amount.
       const sushiAfter = await sushi.balanceOf(userAddress);
       expect(sushiAfter - sushiBefore).to.equal(depositAmount);
+    });
+
+    it("should allow withdrawal by approved spender", async () => {
+      const depositAmount = ethers.parseUnits("5", 18);
+      await sushi.connect(user).approve(vaultAddress, depositAmount);
+      await vault.connect(user).deposit(depositAmount, userAddress);
+
+      const withdrawAmount = ethers.parseUnits("5", 18);
+      await vault.connect(user).approve(vaultAddress, withdrawAmount);
+      await vault.connect(user).withdraw(withdrawAmount, userAddress, userAddress);
+    });
+
+    it("should allow partial withdrawal of Sushi", async () => {
+      const depositAmount = ethers.parseUnits("10", 18);
+      await sushi.connect(user).approve(vaultAddress, depositAmount);
+      await vault.connect(user).deposit(depositAmount, userAddress);
+
+      const partialWithdraw = ethers.parseUnits("5", 18);
+      await vault.connect(user).withdraw(partialWithdraw, userAddress, userAddress);
+
+      expect(await sushi.balanceOf(userAddress)).to.be.gte(partialWithdraw);
     });
   });
 
@@ -204,6 +232,7 @@ describe("XSushiVault Test Suite", function () {
       await expect(tx).to.emit(vault, "Deposit");
     });
 
+    //Wrote this test to debug router swap functionality
     it("should perform swap directly", async () => {
       const wethAddress = WETHADDRESS;
       const amountIn = ethers.parseUnits("100", 6);
@@ -235,7 +264,7 @@ describe("XSushiVault Test Suite", function () {
       await usdt.connect(user).approve(vaultAddress, amountIn);
       await expect(
         vault.connect(user).zapIn(usdtAddress, amountIn, amountOutMinimum, 3000)
-      ).to.be.reverted; // Reverts due to insufficient output
+      ).to.be.reverted;
     });
 
     it("should revert if zapIn is called with Sushi", async () => {
