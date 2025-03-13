@@ -48,38 +48,29 @@ The following decisions were made to balance security, gas efficiency, and funct
   - **Decision**: Approves the exact amount of tokens needed for each operation (e.g., staking Sushi or unstaking xSushi) rather than using infinite approvals.
   - **Reasoning**: Infinite approvals could save ~20,000 gas per call by avoiding repeated approvals, but they pose a security risk—if the SushiBar or router is compromised, the vault’s tokens could be drained. Security is prioritized over gas savings in this DeFi context.
 
-- **No Batch Operations**
-
-  - **Decision**: Does not implement batch deposit or withdrawal functions.
-  - **Reasoning**: Batching could reduce gas costs by spreading transaction overhead, but it adds complexity and edge cases. For a vault focused on individual users, the simplicity and clarity of single operations outweigh the marginal gas savings.
-
 - **Hardcoded Swap Deadline in zapIn**
 
-  - **Decision**: Uses a fixed deadline of `block.timestamp + 1000` for swaps in `zapIn`.
+  - **Decision**: Used a fixed deadline of `block.timestamp + 1000` for swaps in `zapIn`.
   - **Reasoning**: A user-defined deadline could avoid gas waste on delayed swaps, but the 1000-second buffer is practical and simplifies the implementation for now. The gas savings from a dynamic deadline are minimal.
 
 - **Redundant Check in zapIn**
 
-  - **Decision**: Includes a `require(sushiReceived > 0)` check after swaps in `zapIn`.
+  - **Decision**: Included a `require(sushiReceived > 0)` check after swaps in `zapIn`.
   - **Reasoning**: Although the SushiSwap router should revert on failed swaps, this check adds an extra safety layer against unexpected behavior, costing only ~200-300 gas. The security benefit justifies the small cost.
 
 - **Solidity Math Over Assembly**
 
-  - **Decision**: Uses `Math.ceilDiv` for calculations instead of inline assembly.
-  - **Reasoning**: Assembly could save ~50-100 gas per operation but reduces readability and increases error risk. Maintainability and simplicity are prioritized over minor gas optimizations.
+  - **Decision**: Used `Math.ceilDiv` for calculations instead of inline assembly.
+  - **Reasoning**: Assembly could save ~50-100 gas per operation but would reduce readability and increase error risk. Maintainability and simplicity are prioritized over minor gas optimizations.
 
 - **Immutable Variables**
-  - **Decision**: Declares key addresses (e.g., `sushi`, `sushiBar`, `router`, `xSushi`) as immutable.
+  - **Decision**: Declared key addresses (i.e., `sushi`, `sushiBar`, `router`, `xSushi`) as immutable.
   - **Reasoning**: Reduces storage costs and gas usage compared to regular storage variables, enhancing efficiency without compromising security.
 
-These decisions ensure XSushiVault is secure, gas-efficient, and maintainable while adhering to the ERC4626 standard. Further optimizations (e.g., infinite approvals or assembly) were considered but avoided due to their disproportionate risks or complexity relative to their benefits.
+These decisions ensure XSushiVault is secure, gas-efficient, and maintainable while adhering to the ERC4626 standard.
 
 ## Security Practices
 
 - **Reentrancy Protection**: All state-changing functions that interact with external contracts use nonReentrant, ensuring that reentrancy attacks (where an attacker repeatedly calls a function before the first call is completed) cannot occur.
 - **Use of SafeERC20**: Ensures safe interactions with ERC20 tokens, preventing unexpected failures.
 - **Minimized External Calls**: External calls (e.g., swaps, staking) are optimized to reduce gas costs and attack vectors.
-
----
-
-For any issues or contributions, feel free to open an issue or submit a pull request!
