@@ -1,17 +1,17 @@
-# XSushiVault - ERC4626 Tokenized Vault
+# XSushiVault - ERC4626 Tokenized Vault 🏦
 
 ## Overview
 
 XSushiVault is an ERC4626-compliant tokenized vault, ensuring seamless integration with other DeFi protocols that support this standard. It allows users to deposit Sushi tokens, stake them in the SushiBar, and receive vault shares representing their stake. The zap functionality simplifies deposits by swapping supported tokens (e.g., USDC, WETH) for Sushi via Uniswap V3 in a single transaction. Security is prioritized with OpenZeppelin’s ReentrancyGuard and SafeERC20 for robust protection and safe token handling.
 
-## Features
+## Features ✨
 
 - **ERC4626 Standard Compliance**: Implements the ERC4626 tokenized vault standard for ease of integration with DeFi protocols.
 - **SushiBar Staking**: Deposited Sushi is staked in the SushiBar, earning xSushi.
 - **Token Swapping / Zap Functionality**: Users can deposit different tokens, which are swapped for Sushi before being staked.
 - **Secure & Optimized**: Implements OpenZeppelin security best practices, including reentrancy protection and safe token transfers.
 
-## Setup & Running the Project Locally
+## Setup & Running the Project Locally 📥
 
 ### Pre-requisites for initial setup
 
@@ -39,13 +39,13 @@ XSushiVault is an ERC4626-compliant tokenized vault, ensuring seamless integrati
 npx hardhat test tests/XSushiVault.test.js
 ```
 
-## Key Design Decisions
+## Key Design Decisions 🎯
 
 The following decisions were made to balance security, gas efficiency, and functionality in XSushiVault:
 
 - **Precise Approval Management**
 
-  - **Decision**: Approves the exact amount of tokens needed for each operation (e.g., staking Sushi or unstaking xSushi) rather than using infinite approvals.
+  - **Decision**: Approved the exact amount of tokens needed for each operation while staking Sushi or unstaking xSushi rather than using infinite approvals.
   - **Reasoning**: Infinite approvals could save ~20,000 gas per call by avoiding repeated approvals, but they pose a security risk—if the SushiBar or router is compromised, the vault’s tokens could be drained. Security is prioritized over gas savings in this DeFi context.
 
 - **Hardcoded Swap Deadline in zapIn**
@@ -69,7 +69,7 @@ The following decisions were made to balance security, gas efficiency, and funct
 
 These decisions ensure XSushiVault is secure, gas-efficient, and maintainable while adhering to the ERC4626 standard.
 
-## Security Practices
+## Security Practices 🔒
 
 - **Reentrancy Protection**: All state-changing functions that interact with external contracts use nonReentrant, ensuring that reentrancy attacks (where an attacker repeatedly calls a function before the first call is completed) cannot occur.
 - **Use of SafeERC20**: Ensures safe interactions with ERC20 tokens, preventing unexpected failures.
