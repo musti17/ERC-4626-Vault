@@ -166,7 +166,6 @@ describe("XSushiVault Test Suite", function () {
       await vault.connect(user).approve(spender.address, expectedShares);
 
       // Now, spender initiates the withdrawal on behalf of the owner.
-      // Notice that the caller (spender) is different from the owner, triggering the allowance logic.
       await vault
         .connect(spender)
         .withdraw(depositAmount, user.address, user.address);
