@@ -151,13 +151,25 @@ describe("XSushiVault Test Suite", function () {
     });
 
     it("should allow withdrawal by approved spender", async () => {
+      const signers = await ethers.getSigners();
+      const spender = signers[1]; // A different account as the approved spender.
+
+      // Owner deposits 5 Sushi tokens
       const depositAmount = ethers.parseUnits("5", 18);
       await sushi.connect(user).approve(vaultAddress, depositAmount);
-      await vault.connect(user).deposit(depositAmount, userAddress);
+      await vault.connect(user).deposit(depositAmount, user.address);
 
-      const withdrawAmount = ethers.parseUnits("5", 18);
-      await vault.connect(user).approve(vaultAddress, withdrawAmount);
-      await vault.connect(user).withdraw(withdrawAmount, userAddress, userAddress);
+      // Compute the expected shares required to withdraw the depositAmount
+      const expectedShares = await vault.previewWithdraw(depositAmount);
+
+      // Owner approves spender to withdraw the computed amount of vault shares
+      await vault.connect(user).approve(spender.address, expectedShares);
+
+      // Now, spender initiates the withdrawal on behalf of the owner.
+      // Notice that the caller (spender) is different from the owner, triggering the allowance logic.
+      await vault
+        .connect(spender)
+        .withdraw(depositAmount, user.address, user.address);
     });
 
     it("should allow partial withdrawal of Sushi", async () => {
@@ -166,7 +178,9 @@ describe("XSushiVault Test Suite", function () {
       await vault.connect(user).deposit(depositAmount, userAddress);
 
       const partialWithdraw = ethers.parseUnits("5", 18);
-      await vault.connect(user).withdraw(partialWithdraw, userAddress, userAddress);
+      await vault
+        .connect(user)
+        .withdraw(partialWithdraw, userAddress, userAddress);
 
       expect(await sushi.balanceOf(userAddress)).to.be.gte(partialWithdraw);
     });
